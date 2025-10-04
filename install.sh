@@ -79,7 +79,7 @@ hwclock --systohc
 echo "z-arch" > /etc/hostname
 
 echo "-------------------------------------------------"
-echo "Audio Drivers"
+echo "Drivers"
 echo "-------------------------------------------------"
 
 pacman -S pipewire pipewire-alsa pipewire-pulse bluez bluez-tools bluez-utils --noconfirm --needed
