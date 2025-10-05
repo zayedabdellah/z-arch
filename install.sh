@@ -12,11 +12,14 @@ read ROOT
 echo "Please enter your Username:"
 read USER 
 
+echo "Please enter your Password"
+read PASSWORD
+
 echo "Enter your root password:"
 read ROOT_PASSWORD
 
-echo "Please enter your Password"
-read PASSWORD 
+echo "Please enter your hostname:"
+read HOSTNAME
 
 echo "Choose Bootloader"
 echo "1. Systemd-boot"
@@ -54,7 +57,7 @@ echo "--------------------------------------"
 pacman-key --init
 pacman-key --populate archlinux
 reflector -c "SA" > /etc/pacman.d/mirrorlist
-pacstrap /mnt base linux linux-firmware base-devel git nano bash-completion networkmanager fish fastfetch fzf mpv ttf-jetbrains-mono-nerd
+pacstrap /mnt base linux linux-firmware base-devel git nano bash-completion networkmanager fish fastfetch fzf
 
 # fstab
 genfstab -U /mnt > /mnt/etc/fstab
@@ -76,7 +79,7 @@ echo "LANG=en_US.UTF-8" >> /etc/locale.conf
 ln -sf /usr/share/zoneinfo/Asia/Dubai /etc/localtime
 hwclock --systohc
 
-echo "z-arch" > /etc/hostname
+echo $HOSTNAME > /etc/hostname
 
 echo "-------------------------------------------------"
 echo "Drivers"
