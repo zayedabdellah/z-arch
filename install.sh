@@ -57,7 +57,7 @@ echo "--------------------------------------"
 pacman-key --init
 pacman-key --populate archlinux
 reflector -c "SA" > /etc/pacman.d/mirrorlist
-pacstrap /mnt base linux linux-firmware base-devel git nano bash-completion networkmanager fish fastfetch fzf
+pacstrap /mnt base linux linux-firmware base-devel git nano bash-completion networkmanager fish fastfetch fzf tmux noto-fonts mpv ffmpeg yt-dlp
 
 # fstab
 genfstab -U /mnt > /mnt/etc/fstab
