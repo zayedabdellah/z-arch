@@ -1,18 +1,31 @@
 #!/usr/bin/env bash
 
-echo "Enter your EFI partition: (\"/dev/sda1\", \"/dev/nvme0n1p1\")"
-read EFI
+echo "Enter the target disk to partition (e.g. /dev/sda or /dev/nvme0n1):"
+read DISK
 
-echo "Do you have a SWAP partition? (yes/no)"
-read HAS_SWAP
-
-if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
-    echo "Enter your SWAP partition: (\"/dev/sda2\", \"/dev/nvme0n1p2\")"
-    read SWAP
+echo "This will erase all data on $DISK. Are you sure? (yes/no)"
+read CONFIRM
+if [[ "$CONFIRM" != "yes" ]]; then
+    echo "Aborting."
+    exit 1
 fi
 
-echo "Enter your root(/) partition: (\"/dev/sda3\", \"/dev/nvme0n1p3\")"
-read ROOT  
+echo "Enter EFI partition size (e.g. 512M):"
+read EFI_SIZE
+
+echo "Do you want a SWAP partition? (yes/no)"
+read HAS_SWAP
+if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+    echo "Enter SWAP partition size (e.g. 2G):"
+    read SWAP_SIZE
+fi
+
+echo "Use remaining space for ROOT partition? (yes/no)"
+read USE_REMAINING
+if [[ "$USE_REMAINING" =~ ^[Nn][Oo]$ ]]; then
+    echo "Enter ROOT partition size (e.g. 20G):"
+    read ROOT_SIZE
+fi
 
 echo "Please enter your Username:"
 read USER 
@@ -30,49 +43,78 @@ echo "Choose Bootloader"
 echo "1. Systemd-boot"
 echo "2. GRUB"
 read -p "Enter your choice: " BOOT
-
-if [[ "$BOOT" != 2 ]]; then
-    BOOT=1
-fi
+if [[ "$BOOT" != "2" ]]; then BOOT=1; fi
 
 echo "Do you want to install yay (AUR helper)? [y/N]"
 read INSTALL_YAY
 
-# make filesystems
-echo -e "\nCreating Filesystems...\n"
+# Partition disk
+echo "Partitioning $DISK..."
+fdisk "$DISK" <<EOF
+g
+n
+1
 
-existing_fs=$(blkid -s TYPE -o value "$EFI")
-if [[ "$existing_fs" != "vfat" ]]; then
-    mkfs.fat -F32 "$EFI"
++$EFI_SIZE
+t
+1
+$( [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]] && echo "n\n2\n\n+$SWAP_SIZE\nt\n2\n19" )
+n
+$( [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]] && echo "3" || echo "2" )
+$([[ "$USE_REMAINING" =~ ^[Yy][Ee]?[Ss]?$ ]] && echo "" || echo "+$ROOT_SIZE")
+w
+EOF
+
+# Assign partition names
+if [[ "$DISK" == *"nvme"* ]]; then
+    EFI="${DISK}p1"
+    if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+        SWAP="${DISK}p2"
+        ROOT="${DISK}p3"
+    else
+        ROOT="${DISK}p2"
+    fi
+else
+    EFI="${DISK}1"
+    if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+        SWAP="${DISK}2"
+        ROOT="${DISK}3"
+    else
+        ROOT="${DISK}2"
+    fi
 fi
 
+# Format partitions
+echo -e "\nCreating Filesystems...\n"
+mkfs.fat -F32 "$EFI"
+mkfs.ext4 "$ROOT"
 if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
     mkswap "$SWAP"
     swapon "$SWAP"
 fi
 
-mkfs.ext4 "${ROOT}"
-
-# mount target
-mount "${ROOT}" /mnt
+# Mount partitions
+mount "$ROOT" /mnt
 ROOT_UUID=$(blkid -s UUID -o value "$ROOT")
-if [[ $BOOT == 1 ]]; then
+if [[ "$BOOT" == "1" ]]; then
     mount --mkdir "$EFI" /mnt/boot
 else
     mount --mkdir "$EFI" /mnt/boot/efi
 fi
 
+# Install base system
 echo "--------------------------------------"
 echo "-- INSTALLING Base Arch Linux --"
 echo "--------------------------------------"
 pacman-key --init
 pacman-key --populate archlinux
 reflector -c "SA" > /etc/pacman.d/mirrorlist
-pacstrap /mnt base linux linux-firmware base-devel git nano bash-completion networkmanager mpv ffmpeg yt-dlp fish fastfetch fzf docker docker-compose mpv noto-fonts
+pacstrap /mnt base linux linux-firmware base-devel git nano bash-completion networkmanager mpv ffmpeg yt-dlp fish fastfetch fzf docker docker-compose noto-fonts
 
-# fstab
+# Generate fstab
 genfstab -U /mnt > /mnt/etc/fstab
 
+# Post-install script
 cat <<REALEND > /mnt/next.sh
 echo root:$ROOT_PASSWORD | chpasswd
 useradd -m -G wheel -s /bin/fish $USER
