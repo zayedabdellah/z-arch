@@ -61,20 +61,40 @@ read -p "Enter your choice [1/2/3]: " DESKTOP
 
 # Partition disk
 echo "Partitioning $DISK..."
-fdisk "$DISK" <<EOF
-g
-n
-1
+{
+  echo g
+  echo n
+  echo
+  echo
+  echo "+$EFI_SIZE"
+  echo t
+  echo 1
+  echo 1
 
-+$EFI_SIZE
-t
-1
-$( [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]] && echo "n\n2\n\n+$SWAP_SIZE\nt\n2\n19" )
-n
-$( [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]] && echo "3" || echo "2" )
-$([[ "$USE_REMAINING" =~ ^[Yy][Ee]?[Ss]?$ ]] && echo "" || echo "+$ROOT_SIZE")
-w
-EOF
+  if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+    echo n
+    echo
+    echo
+    echo "+$SWAP_SIZE"
+    echo t
+    echo 2
+    echo 19
+    ROOT_PART_NUM=3
+  else
+    ROOT_PART_NUM=2
+  fi
+
+  echo n
+  echo
+  echo
+  if [[ "$USE_REMAINING" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+    echo
+  else
+    echo "+$ROOT_SIZE"
+  fi
+
+  echo w
+} | fdisk "$DISK"
 
 # Assign partition names
 if [[ "$DISK" == *"nvme"* ]]; then
