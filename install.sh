@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 
-echo "Enter the target disk to partition (e.g. /dev/sda or /dev/nvme0n1):"
+echo "Enter the target disk to format and partition (e.g. /dev/sda or /dev/nvme0n1):"
 read DISK
 
-echo "This will erase all data on $DISK. Are you sure? (yes/no)"
+echo "This will ERASE ALL DATA on $DISK. Are you absolutely sure? (yes/no)"
 read CONFIRM
 if [[ "$CONFIRM" != "yes" ]]; then
     echo "Aborting."
     exit 1
 fi
+
+# Wipe disk and create new GPT table
+echo "Wiping $DISK..."
+wipefs -af "$DISK"
+sgdisk -Z "$DISK"
 
 echo "Enter EFI partition size (e.g. 512M):"
 read EFI_SIZE
@@ -42,11 +47,17 @@ read HOSTNAME
 echo "Choose Bootloader"
 echo "1. Systemd-boot"
 echo "2. GRUB"
-read -p "Enter your choice: " BOOT
+read -p "Enter your choice [1/2]: " BOOT
 if [[ "$BOOT" != "2" ]]; then BOOT=1; fi
 
 echo "Do you want to install yay (AUR helper)? [y/N]"
 read INSTALL_YAY
+
+echo "Choose a desktop environment:"
+echo "1. GNOME"
+echo "2. KDE Plasma"
+echo "3. None"
+read -p "Enter your choice [1/2/3]: " DESKTOP
 
 # Partition disk
 echo "Partitioning $DISK..."
@@ -161,6 +172,19 @@ else
 fi
 
 echo "-------------------------------------------------"
+echo "Installing Desktop Environment"
+echo "-------------------------------------------------"
+if [[ "$DESKTOP" == "1" ]]; then
+    pacman -S gnome gdm --noconfirm --needed
+    systemctl enable gdm
+elif [[ "$DESKTOP" == "2" ]]; then
+    pacman -S plasma sddm --noconfirm --needed
+    systemctl enable sddm
+else
+    echo "Skipping desktop environment installation."
+fi
+
+echo "-------------------------------------------------"
 echo "yay installation"
 echo "-------------------------------------------------"
 if [[ "$INSTALL_YAY" =~ ^[Yy]$ ]]; then
@@ -177,5 +201,5 @@ echo "Install Complete, You can reboot now"
 echo "-------------------------------------------------"
 REALEND
 
-export INSTALL_YAY
-arch-chroot /mnt bash -c 'INSTALL_YAY=$INSTALL_YAY sh next.sh' && rm /mnt/next.sh
+export INSTALL_YAY DESKTOP
+arch-chroot /mnt bash -c 'INSTALL_YAY=$INSTALL_YAY DESKTOP=$DESKTOP sh next.sh' && rm /mnt/next.sh
