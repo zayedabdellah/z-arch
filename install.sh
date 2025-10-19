@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 
-echo "Enter your EFI partition: ("/dev/sda1","/dev/nvme0n1p1")"
+echo "Enter your EFI partition: (\"/dev/sda1\", \"/dev/nvme0n1p1\")"
 read EFI
 
-echo "Enter your SWAP partition: ("/dev/sda2","/dev/nvme0n1p2")"
-read SWAP
+echo "Do you have a SWAP partition? (yes/no)"
+read HAS_SWAP
 
-echo "Enter your root(/) paritition: ("/dev/sda3","/dev/nvme0n1p3")"
+if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+    echo "Enter your SWAP partition: (\"/dev/sda2\", \"/dev/nvme0n1p2\")"
+    read SWAP
+fi
+
+echo "Enter your root(/) partition: (\"/dev/sda3\", \"/dev/nvme0n1p3\")"
 read ROOT  
 
 echo "Please enter your Username:"
 read USER 
 
-echo "Please enter your Password"
+echo "Please enter your Password:"
 read PASSWORD
 
 echo "Enter your root password:"
@@ -30,12 +35,18 @@ if [[ "$BOOT" != 2 ]]; then
     BOOT=1
 fi
 
+echo "Do you want to install yay (AUR helper)? [y/N]"
+read INSTALL_YAY
+
 # make filesystems
 echo -e "\nCreating Filesystems...\n"
 
 existing_fs=$(blkid -s TYPE -o value "$EFI")
 if [[ "$existing_fs" != "vfat" ]]; then
     mkfs.fat -F32 "$EFI"
+fi
+
+if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
     mkswap "$SWAP"
     swapon "$SWAP"
 fi
@@ -57,7 +68,7 @@ echo "--------------------------------------"
 pacman-key --init
 pacman-key --populate archlinux
 reflector -c "SA" > /etc/pacman.d/mirrorlist
-pacstrap /mnt base linux linux-firmware base-devel git nano bash-completion networkmanager fish fastfetch fzf tmux noto-fonts mpv ffmpeg yt-dlp
+pacstrap /mnt base linux linux-firmware base-devel git nano bash-completion networkmanager mpv ffmpeg yt-dlp fish fastfetch fzf docker docker-compose mpv noto-fonts
 
 # fstab
 genfstab -U /mnt > /mnt/etc/fstab
@@ -74,7 +85,7 @@ echo "-------------------------------------------------"
 sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 sed -i 's/^#ar_AE.UTF-8 UTF-8/ar_AE.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
-echo "LANG=en_US.UTF-8" >> /etc/locale.conf
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
 ln -sf /usr/share/zoneinfo/Asia/Dubai /etc/localtime
 hwclock --systohc
@@ -84,19 +95,16 @@ echo $HOSTNAME > /etc/hostname
 echo "-------------------------------------------------"
 echo "Drivers"
 echo "-------------------------------------------------"
-
 pacman -S pipewire pipewire-alsa pipewire-pulse bluez bluez-tools bluez-utils --noconfirm --needed
-
 systemctl enable NetworkManager bluetooth
 systemctl --user enable pipewire pipewire-pulse
 
 echo "--------------------------------------"
 echo "-- Bootloader Installation  --"
 echo "--------------------------------------"
-
 if [[ $BOOT == 1 ]]; then
     bootctl install --path=/boot
-    echo "default arch.conf" >> /boot/loader/loader.conf
+    echo "default arch.conf" > /boot/loader/loader.conf
     cat <<EOF > /boot/loader/entries/arch.conf
 title Arch Linux
 linux /vmlinuz-linux
@@ -111,9 +119,21 @@ else
 fi
 
 echo "-------------------------------------------------"
+echo "yay installation"
+echo "-------------------------------------------------"
+if [[ "$INSTALL_YAY" =~ ^[Yy]$ ]]; then
+    pacman -S --needed git base-devel --noconfirm
+    sudo -u $USER git clone https://aur.archlinux.org/yay.git /home/$USER/yay
+    cd /home/$USER/yay
+    chown -R $USER:wheel /home/$USER/yay
+    sudo -u $USER bash -c "cd ~/yay && makepkg -si --noconfirm"
+    rm -rf /home/$USER/yay
+fi
+
+echo "-------------------------------------------------"
 echo "Install Complete, You can reboot now"
 echo "-------------------------------------------------"
 REALEND
 
-arch-chroot /mnt sh next.sh && rm /mnt/next.sh
-
+export INSTALL_YAY
+arch-chroot /mnt bash -c 'INSTALL_YAY=$INSTALL_YAY sh next.sh' && rm /mnt/next.sh
