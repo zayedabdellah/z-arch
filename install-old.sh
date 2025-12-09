@@ -29,9 +29,11 @@ read HOSTNAME
 echo "Choose Bootloader"
 echo "1. Systemd-boot"
 echo "2. GRUB"
+echo "3. None (Do not install a boot loader)"
 read -p "Enter your choice: " BOOT
 
-if [[ "$BOOT" != 2 ]]; then
+# Default to Systemd-boot if input is not 2 or 3
+if [[ "$BOOT" != 2 && "$BOOT" != 3 ]]; then
     BOOT=1
 fi
 
@@ -56,9 +58,11 @@ mkfs.ext4 "${ROOT}"
 # mount target
 mount "${ROOT}" /mnt
 ROOT_UUID=$(blkid -s UUID -o value "$ROOT")
+
+# Mount EFI partition based on bootloader choice or default to /mnt/boot/efi for 'None'
 if [[ $BOOT == 1 ]]; then
     mount --mkdir "$EFI" /mnt/boot
-else
+elif [[ $BOOT == 2 || $BOOT == 3 ]]; then
     mount --mkdir "$EFI" /mnt/boot/efi
 fi
 
@@ -112,10 +116,12 @@ initrd /intel-ucode.img
 initrd /initramfs-linux.img
 options root=UUID=$ROOT_UUID rw quiet
 EOF
-else
+elif [[ $BOOT == 2 ]]; then
     pacman -S grub efibootmgr --noconfirm --needed
     grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id="sigma"
     grub-mkconfig -o /boot/grub/grub.cfg
+else
+    echo "Skipping bootloader installation as requested."
 fi
 
 echo "-------------------------------------------------"
