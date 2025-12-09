@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 
-echo "Enter your EFI partition: (\"/dev/sda1\", \"/dev/nvme0n1p1\")"
-read EFI
+echo "Do you have an EFI partition? (yes/no)"
+read HAS_EFI
+
+if [[ "$HAS_EFI" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+    echo "Enter your EFI partition: (\"/dev/sda1\", \"/dev/nvme0n1p1\")"
+    read EFI
+fi
 
 echo "Do you have a SWAP partition? (yes/no)"
 read HAS_SWAP
@@ -43,9 +48,11 @@ read INSTALL_YAY
 # make filesystems
 echo -e "\nCreating Filesystems...\n"
 
-existing_fs=$(blkid -s TYPE -o value "$EFI")
-if [[ "$existing_fs" != "vfat" ]]; then
-    mkfs.fat -F32 "$EFI"
+if [[ "$HAS_EFI" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+    existing_fs=$(blkid -s TYPE -o value "$EFI")
+    if [[ "$existing_fs" != "vfat" ]]; then
+        mkfs.fat -F32 "$EFI"
+    fi
 fi
 
 if [[ "$HAS_SWAP" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
@@ -59,11 +66,12 @@ mkfs.ext4 "${ROOT}"
 mount "${ROOT}" /mnt
 ROOT_UUID=$(blkid -s UUID -o value "$ROOT")
 
-# Mount EFI partition based on bootloader choice or default to /mnt/boot/efi for 'None'
-if [[ $BOOT == 1 ]]; then
-    mount --mkdir "$EFI" /mnt/boot
-elif [[ $BOOT == 2 || $BOOT == 3 ]]; then
-    mount --mkdir "$EFI" /mnt/boot/efi
+if [[ "$HAS_EFI" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+    if [[ $BOOT == 1 ]]; then
+        mount --mkdir "$EFI" /mnt/boot
+    elif [[ $BOOT == 2 || $BOOT == 3 ]]; then
+        mount --mkdir "$EFI" /mnt/boot/efi
+    fi
 fi
 
 echo "--------------------------------------"
@@ -106,22 +114,26 @@ systemctl --user enable pipewire pipewire-pulse
 echo "--------------------------------------"
 echo "-- Bootloader Installation  --"
 echo "--------------------------------------"
-if [[ $BOOT == 1 ]]; then
-    bootctl install --path=/boot
-    echo "default arch.conf" > /boot/loader/loader.conf
-    cat <<EOF > /boot/loader/entries/arch.conf
+if [[ "$HAS_EFI" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+    if [[ $BOOT == 1 ]]; then
+        bootctl install --path=/boot
+        echo "default arch.conf" > /boot/loader/loader.conf
+        cat <<EOF > /boot/loader/entries/arch.conf
 title Arch Linux
 linux /vmlinuz-linux
 initrd /intel-ucode.img
 initrd /initramfs-linux.img
 options root=UUID=$ROOT_UUID rw quiet
 EOF
-elif [[ $BOOT == 2 ]]; then
-    pacman -S grub efibootmgr --noconfirm --needed
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id="sigma"
-    grub-mkconfig -o /boot/grub/grub.cfg
+    elif [[ $BOOT == 2 ]]; then
+        pacman -S grub efibootmgr --noconfirm --needed
+        grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id="sigma"
+        grub-mkconfig -o /boot/grub/grub.cfg
+    else
+        echo "Skipping bootloader installation as requested."
+    fi
 else
-    echo "Skipping bootloader installation as requested."
+    echo "Skipping bootloader installation because no EFI partition was specified."
 fi
 
 echo "-------------------------------------------------"
@@ -142,4 +154,6 @@ echo "-------------------------------------------------"
 REALEND
 
 export INSTALL_YAY
-arch-chroot /mnt bash -c 'INSTALL_YAY=$INSTALL_YAY sh next.sh' && rm /mnt/next.sh
+export HAS_EFI
+export BOOT
+arch-chroot /mnt bash -c 'INSTALL_YAY=$INSTALL_YAY HAS_EFI=$HAS_EFI BOOT=$BOOT sh next.sh' && rm /mnt/next.sh
